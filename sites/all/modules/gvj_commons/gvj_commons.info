@@ -1,0 +1,14 @@
+name = GVJ Commons
+description = Common modules
+core = 7.x
+package = GVJ
+author = Guillaume Viguier-Just
+author_url = http://www.viguierjust.com
+dependencies[] = back_to_top
+dependencies[] = l10n_update
+dependencies[] = openid
+dependencies[] = shortcut
+dependencies[] = strongarm
+dependencies[] = tinynav
+dependencies[] = toolbar
+features[variable][] = admin_theme

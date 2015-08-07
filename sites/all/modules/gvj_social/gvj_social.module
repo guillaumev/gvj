@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GVJ Social feature.
+ */
+
+include_once 'gvj_social.features.inc';

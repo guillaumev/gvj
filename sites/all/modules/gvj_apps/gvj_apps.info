@@ -1,0 +1,5 @@
+name = GVJ apps
+description = Install GVJ apps.
+core = 7.x
+dependencies[] = apps
+dependencies[] = base_apps

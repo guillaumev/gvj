@@ -1,0 +1,16 @@
+name = Base Media
+description = Defines default configuration and permissions for media modules
+core = 7.x
+package = Base
+dependencies[] = base_core
+dependencies[] = features
+dependencies[] = file_entity
+dependencies[] = media_internet
+features[features_api][] = api:1
+features[user_permission][] = add media from remote sources
+features[user_permission][] = administer files
+features[user_permission][] = create files
+features[user_permission][] = edit own files
+features[user_permission][] = edit any files
+features[user_permission][] = delete own files
+features[user_permission][] = delete any files

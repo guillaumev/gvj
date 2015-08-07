@@ -1,0 +1,666 @@
+<?php
+
+/**
+ * @file
+ * Provides a Commerce payment method for VisaNet Peru(Verified by Visa).
+ */
+
+define('COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX', 'sandbox');
+define('COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE', 'live');
+define('COMMERCE_PAYMENT_VISANET_PERU_NOTIFICATION_SUCCESS', '1');
+define('COMMERCE_PAYMENT_VISANET_PERU_NOTIFICATION_ERROR', '2');
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_payment_visanet_peru_menu() {
+  $items = array();
+  $items['admin/commerce/config/commerce_payment_visanet_peru'] = array(
+    'title' => 'VisaNet Peru settings',
+    'description' => t('Manage global configuration for VisaNet Peru payment method.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_payment_visanet_peru_global_settings_form'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['commerce_payment_visanet_peru/pay_notification'] = array(
+    'page callback' => 'commerce_payment_visanet_peru_process_pay_notification',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Form callback.
+ */
+function commerce_payment_visanet_peru_global_settings_form() {
+  $form = array();
+
+  $form['commerce_payment_visanet_peru_global_merchant_number'] = array(
+    '#type' => 'textfield',
+    '#title' => t('VisaNet Peru merchant code'),
+    '#default_value' => variable_get('commerce_payment_visanet_peru_global_merchant_number', ''),
+    '#description' => t('The unique merchant code assigned by VisaNet Peru.'),
+    '#required' => TRUE,
+  );
+  $options = array(
+    COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX =>  t('Sandbox - use for testing'),
+    COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE => t('Live - use for processing real transactions'),
+  );
+  $form['commerce_payment_visanet_peru_global_environment'] = array(
+    '#type' => 'select',
+    '#title' => t('VisaNet Peru environment'),
+    '#default_value' => variable_get('commerce_payment_visanet_peru_global_environment', COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX),
+    '#description' => t('The environment to use for the site.'),
+    '#options' => $options,
+    '#required' => TRUE,
+  );
+  $form['commerce_payment_visanet_peru_global_notify'] = array(
+    '#type' => 'item',
+    '#title' => t('VisaNet Peru Notify URL'),
+    '#markup' => url('commerce_payment_visanet_peru/pay_notification', array('absolute' => TRUE)),
+    '#description' => t('The URL you asked VisaNet Peru to set as your receive callback.'),
+  );
+
+  $form['commerce_payment_visanet_peru_global_terms_link'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Terms and conditions'),
+    '#default_value' => variable_get('commerce_payment_visanet_peru_global_terms_link', ''),
+    '#description' => t('The URL of your terms and conditions.'),
+    '#required' => TRUE,
+  );
+
+  return system_settings_form($form);
+}
+
+/**
+ * Menu callback for 'commerce_payment_visanet_peru/pay_notification'.
+ *
+ * @return
+ *   None. It redirects to the right page.
+ */
+function commerce_payment_visanet_peru_process_pay_notification() {
+  global $user;
+  if (!isset($_POST['eticket'])) {
+    watchdog('commerce_payment_visanet_peru', 'Payment notification: There was an error retrieving the e-ticket. POST contained <pre>' . print_r($_POST, 1) . '</pre>', array(), WATCHDOG_ERROR);
+    drupal_set_message(t('There was a problem in the payment. Please contact the webmaster mentioning the details of your order.'), 'error');
+    drupal_goto('<front>');
+  }
+  $eticket = $_POST['eticket'];
+  $data = commerce_payment_visanet_peru_eticket_get($eticket);
+
+  // @todo validate the origin server ip
+
+  // Try to load the order.
+  $order = commerce_order_load($data['order_id']);
+  if (!$order) {
+    watchdog('commerce_payment_visanet_peru', 'Pay notification: The passed order id "%order_id" is invalid.', array('%order_id' => $data['order_id']), WATCHDOG_ERROR);
+    drupal_set_message(t('There was a problem in the payment. Please contact the webmaster mentioning that your order id is "%order_id"', array('%order_id' => $data['order_id'])), 'error');
+    drupal_goto('<front>');
+  }
+
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $success_url = url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+  $fail_url = url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE));
+
+  // Create a payment transaction with the result.
+  $transaction = commerce_payment_transaction_new('commerce_payment_visanet_peru', $order->order_id);
+  $transaction->payload = $data;
+  $transaction->remote_status = $data['tx_result'];
+  // drupal_goto invokes exit, so no need to return.
+  if ($data['tx_result'] == COMMERCE_PAYMENT_VISANET_PERU_NOTIFICATION_SUCCESS) {
+    // Do not worry about more transactions for now. We are sending the
+    // amount to charge.
+    // @todo do not process the same transaction more than once
+    // @todo use all the passed information in $data as possible
+    $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+    $transaction->amount = commerce_currency_decimal_to_amount($data['authorized_amount'], $order_wrapper->commerce_order_total->currency_code->value());
+    $transaction->message = 'VisaNet authorized %amount with code %authorization_code on %authorized_date PET.';
+    $transaction->message_variables = array('%amount' => $data['authorized_amount'], '%authorization_code' => $data['authorization_code'], '%authorized_date' => $data['tx_datetime']);
+    commerce_payment_transaction_save($transaction);
+
+    drupal_goto($success_url);
+  }
+  else {
+    $deny_message = commerce_payment_visanet_peru_get_deny_message($data['deny_code']);
+    watchdog('commerce_payment_visanet_peru', 'Pay notification: Payment for order "%order_id" not accepted. VisaNet returned tx_result "%tx_result", error "%code: %message".', array('%tx_result' => $data['tx_result'], '%order_id' => $data['order_id'], '%code' => $data['deny_code'], '%message' => $deny_message), WATCHDOG_ERROR);
+    if ($user->uid != 0) {
+      drupal_set_message(t('There was an error during payment of <a href="@url">order number %order_id</a>. Please try again later or contact webmaster.', array('@url' => url("user/{$user->uid}/orders/{$order_wrapper->order_id->value()}"), '%order_id' => $order_wrapper->order_id->value())), 'error');
+    }
+    else {
+      drupal_set_message(t('There was an error during payment of order number %order_id. Please try again later or contact webmaster.', array('%order_id' => $order_wrapper->order_id->value())), 'error');
+    }
+    $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+    $transaction->message = 'VisaNet returned tx_result "%tx_result", error "%code: %message".';
+    $transaction->message_variables = array('%tx_result' => $data['tx_result'], '%code' => $data['deny_code'], '%message' => $deny_message);
+    commerce_payment_transaction_save($transaction);
+    if (module_exists('commerce_cart')) {
+      // Re-add items to cart. Sadly visanet does not allow processing the same
+      // order id more than once.
+      $new_order = commerce_cart_order_new($order_wrapper->uid->value());
+      foreach ($order_wrapper->commerce_line_items->value() as $line_item) {
+        commerce_cart_product_add($order_wrapper->uid->value(), $line_item);
+      }
+      $fail_url = url('checkout/' . $new_order->order_id, array('absolute' => TRUE));
+    }
+    drupal_goto($fail_url);
+  }
+}
+
+/**
+ * Implements hook_commerce_payment_method_info().
+ */
+function commerce_payment_visanet_peru_commerce_payment_method_info() {
+  $payment_methods = array();
+
+  $payment_methods['commerce_payment_visanet_peru'] = array(
+    'title'                => t('VisaNet Peru'),
+    'short_title'          => t('VISA'),
+    'display_title'        => t('VISA'),
+    'description'          => t('Provide payments using VisaNet Peru.'),
+    'terminal'             => FALSE,
+    'offsite'              => TRUE,
+    'offsite_autoredirect' => TRUE,
+  );
+
+  return $payment_methods;
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info().
+ */
+function commerce_payment_visanet_peru_commerce_checkout_pane_info() {
+  $checkout_panes = array();
+  $checkout_panes['checkout_completion_visanet'] = array(
+    'name' => t('Visanet extra information'),
+    'title' => t('Completion information'),
+    'base' => 'commerce_payment_visanet_peru_checkout_completion_visanet_pane',
+    'page' => 'complete',
+    'locked' => TRUE,
+    'review' => FALSE,
+    'file' => 'commerce_payment_visanet_peru.checkout_pane.inc',
+  );
+  return $checkout_panes;
+}
+
+/**
+ * Payment method callback: settings_form.
+ */
+function commerce_payment_visanet_peru_settings_form($settings = NULL) {
+  $form = array();
+
+  $default_currency = variable_get('commerce_default_currency', 'PEN');
+  $currency_codes = commerce_payment_visanet_peru_currencies();
+
+  // Merge default settings into the stored settings array.
+  $settings = (array) $settings + array(
+    'currency_code'   => in_array($default_currency, $currency_codes) ? $default_currency : 'PEN',
+    'environment'          => COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX,
+  );
+
+  $form['currency_code'] = array(
+    '#type' => 'select',
+    '#title' => t('Currency code'),
+    '#description' => t('Transactions can only be processed in one of the listed currencies.'),
+    '#options' => $currency_codes,
+    '#default_value' => $settings['currency_code'],
+  );
+
+  return $form;
+}
+
+/**
+ * Payment method callback: submit_form.
+ */
+function commerce_payment_visanet_peru_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form = array();
+
+  // Merge in values from the order.
+  if (!empty($order->data['commerce_payment_visanet_peru'])) {
+    $pane_values += $order->data['commerce_payment_visanet_peru'];
+  }
+
+  // Merge in default values.
+  $pane_values += array(
+    'accept_terms' => '',
+  );
+
+  $visanet_terms_link = variable_get('commerce_payment_visanet_peru_global_terms_link', '');
+  $form['accept_terms'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('I accept the <a href="@url" target="_blank">terms and conditions</a>.', array('@url' => url($visanet_terms_link))),
+    '#description' => t('Please check the box to accept terms and conditions.'),
+    '#default_value' => $pane_values['accept_terms'],
+  );
+
+  return $form;
+}
+
+/**
+ * Payment method callback: submit_form_validate.
+ */
+function commerce_payment_visanet_peru_submit_form_validate($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
+  // Require the checkbox.
+  if (empty($pane_values['accept_terms'])) {
+    form_set_error(implode('][', array_merge($form_parents, array('accept_terms'))), t('You must accept terms and conditions to follow.'));
+    return FALSE;
+  }
+}
+
+/**
+ * Payment method callback: redirect_form.
+ */
+function commerce_payment_visanet_peru_redirect_form($form, &$form_state, $order, $payment_method) {
+  // Return an error if the global settings haven't been configured.
+  $merchant_number = variable_get('commerce_payment_visanet_peru_global_merchant_number', FALSE);
+  $environment = variable_get('commerce_payment_visanet_peru_global_environment', FALSE);
+  if ($merchant_number == FALSE || $environment == FALSE) {
+    drupal_set_message(t('VisaNet Peru is not configured for use.'), 'error');
+    return array();
+  }
+
+  $settings = array(
+    // Add global configuration.
+    'merchant_number' => $merchant_number,
+    'environment' => $environment,
+  );
+
+  return commerce_payment_visanet_peru_order_form($form, $form_state, $order, $payment_method['settings'] + $settings);
+}
+
+/**
+ * Return an array of valid currencies.
+ */
+function commerce_payment_visanet_peru_currencies() {
+  // USD and PEN are supported.
+  return drupal_map_assoc(array('PEN', 'USD'));
+}
+
+/**
+ * Builds a VisaNet Peru form from an order object.
+ *
+ * @param $order
+ *   The fully loaded order being paid for.
+ * @param $settings
+ *   An array of settings used to build out the form, including:
+ *   - merchant_number: The unique code assigned to this merchant.
+ *   - currency_code: the currency code in which merchant will receive
+ *     the payment.
+ *   - environment: The environment to use. Either
+ *     COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX or
+ *     COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE.
+ *
+ * @return
+ *   A renderable form array.
+ */
+function commerce_payment_visanet_peru_order_form($form, &$form_state, $order, $settings) {
+  $wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+  $currency_code = $wrapper->commerce_order_total->currency_code->value();
+  $amount = $wrapper->commerce_order_total->amount->value();
+
+  // Ensure a default value for the payment_method setting.
+  $settings += array('payment_method' => '');
+
+  // Build the data array that will be translated into hidden form values.
+  $data = array(
+    // Merchant unique code.
+    'CODTIENDA' => $settings['merchant_number'],
+
+    // Our reference.
+    'NUMORDEN' => $order->order_number,
+
+    // Total order amount in the format specified i.e 100.00
+    'MOUNT' => number_format(commerce_currency_amount_to_decimal($amount, $currency_code), 2, '.', ''),
+  );
+
+  // Retrieve, validate and add the e-ticket.
+  $eticket_return = commerce_payment_visanet_peru_eticket_generate($data + array('environment' => $settings['environment']));
+  // @fixme How to notify to the end user the error? i.e. redirect?
+  if (!$eticket_return['status']['preprocess'] || !$eticket_return['status']['process']) {
+    drupal_set_message(t('Sorry, there was an error processing your payment.'), 'error');
+    return $form;
+  }
+  if (!$eticket_return['status']['postprocess']) {
+    // Log errors.
+    $errors = array();
+    foreach ($eticket_return['error_messages'] as $error_message) {
+      $errors[] = sprintf('%s (%d)', $error_message['message'], $error_message['id']);
+      // @todo is it possible to discover an e-ticket number to use insted o fail?
+    }
+    watchdog('commerce_payment_visanet_peru', 'There was at least one problem generating the e-ticket: @errors.', array('@errors' =>  implode(' && ', $errors)), WATCHDOG_ERROR);
+    drupal_set_message(t('Sorry, there was an error processing your payment.'), 'error');
+    return $form;
+  }
+  $data['ETICKET'] = $eticket_return['eticket'];
+
+  $form['#action'] = commerce_payment_visanet_peru_server_url($settings['environment'], 'main');
+
+  foreach ($data as $name => $value) {
+    if (!empty($value)) {
+      $form[$name] = array('#type' => 'hidden', '#value' => $value);
+    }
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Proceed to payment'),
+  );
+
+  return $form;
+}
+
+/**
+ * Returns the URL to the specified VisaNet Peru server.
+ *
+ * @param $environment
+ *   The environment to use. Either
+ *   COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX or
+ *   COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE.
+ * @param $type
+ *   The type of the required URL:
+ *   - 'main': Main payment form.
+ *   - 'eticket-generate': E-ticket generation.
+ *   - 'eticket-get': E-ticket retrival.
+ *
+ * @return
+ *   The URL to use to submit requests to the VisaNet Peru server.
+ */
+function commerce_payment_visanet_peru_server_url($environment, $type) {
+  static $server_urls = array(
+    COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE => array(
+      'main' => 'https://www.multimerchantvisanet.com/formularioweb/formulariopago.asp',
+      'eticket-generate' => 'https://www.multimerchantvisanet.com/WSGenerarEticket/WSEticket.asmx?wsdl',
+      'eticket-get' => 'https://www.multimerchantvisanet.com/WSConsulta/WSConsultaEticket.asmx?wsdl',
+    ),
+    COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX => array(
+      'main' => 'http://qas.multimerchantvisanet.com/formularioweb/formulariopago.asp',
+      'eticket-generate' => 'http://qas.multimerchantvisanet.com/wsgenerareticket/wseticket.asmx?wsdl',
+      'eticket-get' => 'http://qas.multimerchantvisanet.com/wsconsulta/wsconsultaeticket.asmx?wsdl',
+    ),
+  );
+  if (empty($server_urls[$environment][$type])) {
+    watchdog('commerce_payment_visanet_peru', 'Cannot retrieve a valid url for environment %environment and type %type', array('%environment' => $environment, '%type' => $type), WATCHDOG_ERROR);
+    return FALSE;
+  }
+
+  return $server_urls[$environment][$type];
+}
+
+/**
+ * Return a message based on the deny response code.
+ *
+ * @param $code
+ *   The notify deny code.
+ *
+ * @return
+ *   A translated text with the message.
+ */
+function commerce_payment_visanet_peru_get_deny_message($code) {
+  switch ($code) {
+    case '101': return 'Operación Denegada. Tarjeta Vencida.';
+    case '102': return 'Operación Denegada. Contactar con emisor';
+    case '104': return 'Operación Denegada. Operacion no permitida para esta tarjeta';
+    case '106': return 'Operación Denegada. Intentos de pin excedidos';
+    case '107': return 'Operación Denegada. Contactar con el emisor';
+    case '108': return 'Operación Denegada. Exceso de actividad';
+    case '109': return 'Operación Denegada. Identificación inválida de establecimiento';
+    case '110': return 'Operación Denegada. Operacion no permitida para esta tarjeta';
+    case '111': return 'Operación Denegada. El monto de la transacción supera el valor máximo permitido para operaciones virtuales';
+    case '112': return 'Operación Denegada. Se requiere clave';
+    case '116': return 'Operación Denegada. Fondos insuficientes.';
+    case '117': return 'Operación Denegada. Clave incorrecta';
+    case '118': return 'Operación Denegada. Tarjeta Inválida.';
+    case '119': return 'Operación Denegada. Exceso de intentos de ingreso de PIN';
+    case '121': return 'Operación Denegada.';
+    case '126': return 'Operación Denegada. PIN inválido';
+    case '129': return 'Operación Denegada. Tarjeta no operativa';
+    case '180': return 'Operación Denegada. Tarjeta inválida';
+    case '181': return 'Operación Denegada Tarjeta con restricciones de Débito';
+    case '182': return 'Operación Denegada. Tarjeta con restricciones de Crédito';
+    case '183': return 'Operación Denegada. Error de sistema';
+    case '190': return 'Operación Denegada. Contactar con emisor';
+    case '191': return 'Operación Denegada. Contactar con emisor';
+    case '192': return 'Operación Denegada. Contactar con emisor';
+    case '199': return 'Operación Denegada.';
+    case '201': return 'Operación Denegada. Tarjeta Vencida.';
+    case '202': return 'Operación Denegada. Contactar con emisor';
+    case '204': return 'Operación Denegada. Operación no permitida para esta tarjeta';
+    case '206': return 'Operación Denegada. Exceso de intentos de ingreso de PIN';
+    case '207': return 'Operación Denegada. Contactar con emisor';
+    case '208': return 'Operación Denegada. Tarjeta Perdida.';
+    case '209': return 'Operación Denegada. Tarjeta Robada.';
+    case '263': return 'Operación Denegada. Error en el envío de parámetros.';
+    case '264': return 'Operación Denegada. Banco Emisor no esta disponible para realizar la autenticación.';
+    case '265': return 'Operación Denegada. Password de tarjeta habiente incorrecto.';
+    case '266': return 'Operación Denegada. Tarjeta Vencida.';
+    case '280': return 'Operación Denegada. Clave errónea';
+    case '290': return 'Operación Denegada. Contactar con emisor';
+    case '300': return 'Operación Denegada. Número de pedido del comercio duplicado. Favor no atender.';
+    case '306': return 'Operación Denegada. Contactar con emisor';
+    case '401': return 'Operación Denegada. Tienda inhabilitada';
+    case '402': return 'Operación Denegada. Tienda con rango de IP no valido.';
+    case '403': return 'Operación Denegada. Tarjeta no autenticada';
+    case '404': return 'Operación Denegada. El monto de la transacción supera el valor máximo permitido';
+    case '405': return 'Operación Denegada. La tarjeta ha superado la cantidad máxima de transacciones en el día.';
+    case '406': return 'Operación Denegada. La tienda ha superado la cantidad máxima de transacciones en el día.';
+    case '407': return 'Operación Denegada. El monto de la transacción no llega al mínimo permitido.';
+    case '408': return 'Operación Denegada. CVV2 no coincide';
+    case '409': return 'Operación Denegada. CVV2 no procesado por Banco';
+    case '410': return 'Operación Denegada. CVV2 no procesado por no ingresado';
+    case '411': return 'Operación Denegada. CVV2 no procesado por Banco';
+    case '412': return 'Operación Denegada. CVV2 no reconocido por Banco';
+    case '413': return 'Operación Denegada. Contactar con emisor';
+    case '414': return 'Operación Denegada.';
+    case '415': return 'Operación Denegada.';
+    case '416': return 'Operación Denegada.';
+    case '417': return 'Operación Denegada.';
+    case '418': return 'Operación Denegada.';
+    case '419': return 'Operación Denegada.';
+    case '420': return 'Operación Denegada. Tarjeta no es VISA';
+    case '421': return 'Operación Denegada. Contactar con emisor';
+    case '422': return 'Operación Denegada. El comercio no está configurado para usar este medio de pago.';
+    case '423': return 'Operación Denegada. Se canceló el proceso de pago / Cancelled checkout.';
+    case '424': return 'Operación Denegada. Contactar con emisor';
+    case '425': return 'Operación Denegada. País emisor incorrecto';
+    case '666': return 'Operación Denegada. Problemas de comunicación. Intente mas tarde.';
+    case '667': return 'Operación Denegada. Transaccion sin autenticacion.';
+    case '668': return 'Operación Denegada..';
+    case '669': return 'Operación Denegada..';
+    case '670': return 'Operación Denegada..';
+    case '807': return 'Operación Denegada. Contactar con emisor';
+    case '900': return 'Operación Denegada. Contactar con emisor';
+    case '904': return 'Operación Denegada. Formato de mensaje erróneo';
+    case '909': return 'Operación Denegada. Error de sistema';
+    case '910': return 'Operación Denegada. Error de sistema';
+    case '912': return 'Operación Denegada. Emisor no disponible';
+    case '913': return 'Operación Denegada. Transmisión duplicada';
+    case '916': return 'Operación Denegada. Contactar con emisor';
+    case '928': return 'Operación Denegada. Contactar con emisor';
+    case '940': return 'Operación Denegada. Transacción anulada previamente';
+    case '941': return 'Operación Denegada. Transacción ya anulada previamente';
+    case '942': return 'Operación Denegada.';
+    case '943': return 'Operación Denegada. Datos originales distintos';
+    case '945': return 'Operación Denegada. Referencia repetida';
+    case '946': return 'Operación Denegada. Operación de anulación en proceso';
+    case '947': return 'Operación Denegada. Comunicación duplicada';
+    case '948': return 'Operación Denegada. Contactar con emisor';
+    case '949': return 'Operación Denegada. Contactar con emisor';
+    case '965': return 'Operación Denegada. Contactar con emisor';
+    default: return t('Undefined error');
+  }
+}
+
+/**
+ * Retrieves a new e-ticket for the transaction.
+ *
+ * @param $data
+ *   An array with the following keys:
+ *   - 'CODTIENDA': Merchant unique code.
+ *   - 'NUMORDEN': Order number.
+ *   - 'MOUNT': Total order amount in the format specified i.e 100.00
+ *   - 'environment': The environment to use. Either
+ *     COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_SANDBOX or
+ *     COMMERCE_PAYMENT_VISANET_PERU_ENVIRONMENT_LIVE.
+ *
+ * @return mixed
+ *   An array with the result, which contains the following keys:
+ *   - 'status': An array containing the following keys indicating a boolean
+ *     flag for the success of the key phase:
+ *     - 'preprocess'
+ *     - 'process'
+ *     - 'postprocess'
+ *   - 'eticket': The value of the e-ticket string, on success.
+ *   - 'error_messages': A list of error messages, each of them is an array
+ *     with the following keys:
+ *     - 'id': the VisaNet Peru e-ticket generation error code.
+ *     - 'message': A description of the error.
+ */
+function commerce_payment_visanet_peru_eticket_generate($data) {
+  $return = array('status' => array('preprocess' => FALSE, 'process' => FALSE, 'postprocess' => FALSE), 'error_messages' => array(), 'eticket' => FALSE);
+
+  foreach (array('CODTIENDA', 'NUMORDEN', 'MOUNT', 'environment') as $required) {
+    if (empty($data[$required])) {
+      watchdog('commerce_payment_visanet_peru', 'Missing argument %argument', array('%argument' => $required), WATCHDOG_ERROR);
+      return $return;
+    }
+  }
+  $return['status']['preprocess'] = TRUE;
+
+  // This is ugly, but they require hard-coded values on the request.
+  $request_xml = sprintf('<?xml version="1.0" encoding="UTF-8" ?>
+    <nuevo_eticket>
+      <parametros>
+        <parametro id="CANAL">3</parametro>
+        <parametro id="PRODUCTO">1</parametro>
+        <parametro id="CODTIENDA">%s</parametro>
+        <parametro id="NUMORDEN">%s</parametro>
+        <parametro id="MOUNT">%s</parametro>
+        <parametro id="DATO_COMERCIO">VisaNet Peru data</parametro>
+      </parametros>
+    </nuevo_eticket>', $data['CODTIENDA'], $data['NUMORDEN'], $data['MOUNT']);
+  $eticket_generate_url = commerce_payment_visanet_peru_server_url($data['environment'], 'eticket-generate');
+
+  $client = new SoapClient($eticket_generate_url);
+  $gen_parameters = array('xmlIn' => $request_xml);
+  $gen_result = $client->GeneraEticket($gen_parameters);
+  try {
+    $eticket = new SimpleXMLElement($gen_result->GeneraEticketResult);
+  }
+  catch (Exception $e) {
+    watchdog('commerce_payment_visanet_peru', 'Converting xml to array failed. One possible reason is that server is down now. The convert failed with exception !exception, trying to convert response @response.', array('!exception' => $e, '@response' => $gen_result->GeneraEticketResult), WATCHDOG_ERROR);
+    return $return;
+  }
+  $return['status']['process'] = TRUE;
+
+  $error_messages = array();
+  $with_errors = FALSE;
+  foreach ($eticket->mensajes->mensaje as $error_message) {
+    $error_messages[] = array(
+      'id' => (string) $error_message['id'],
+      'message' => (string) $error_message,
+    );
+    $with_errors = TRUE;
+  }
+  if ($with_errors) {
+    $return['error_messages'] = $error_messages;
+    return $return;
+  }
+
+  foreach ($eticket->registro->campo as $field) {
+    if ((string) $field['id'] == 'ETICKET') {
+      $return['status']['postprocess'] = TRUE;
+      $return['eticket'] = (string) $field;
+      return $return;
+    }
+  }
+
+  // If we are here, there is an unknown error.
+  watchdog('commerce_payment_visanet_peru', 'There was an unknown problem generating the e-ticket.', array(), WATCHDOG_ERROR);
+  return $return;
+}
+
+/**
+ * Retrieves the information about one e-ticket.
+ *
+ * @param $eticket
+ *   The e-ticket to look up.
+ *
+ * @return array
+ *   An array with the relevant data.
+ *   @todo Document this completely.
+ */
+function commerce_payment_visanet_peru_eticket_get($eticket) {
+  // We must have a basic configuration on place
+  $merchant_number = variable_get('commerce_payment_visanet_peru_global_merchant_number', FALSE);
+  $environment = variable_get('commerce_payment_visanet_peru_global_environment', FALSE);
+  if ($merchant_number == FALSE || $environment == FALSE) {
+    $error_message = 'Pay notification: There is not any merchant number configured on the site';
+    watchdog('commerce_payment_visanet_peru', $error_message, array(), WATCHDOG_ERROR);
+    drupal_set_message(t('Payment notification: There was a problem in the payment. Please contact the webmaster mentioning the details of your order. You can find them on !order_history.', array('!order_history' => l(t('your order history'), "user/{$GLOBALS["user"]->uid}/orders"))), 'error');
+    drupal_goto('<front>');
+  }
+
+  $request_xml = sprintf('<?xml version="1.0" encoding="UTF-8" ?>
+    <consulta_eticket>
+      <parametros>
+        <parametro id="CODTIENDA">%s</parametro>
+        <parametro id="ETICKET">%s</parametro>
+      </parametros>
+    </consulta_eticket>', $merchant_number, $eticket);
+  $eticket_get_url = commerce_payment_visanet_peru_server_url($environment, 'eticket-get');
+  $client = new SoapClient($eticket_get_url);
+  $params = array('xmlIn' => $request_xml);
+  $result = $client->ConsultaEticket($params);
+  try {
+    $eticket_get_response = new SimpleXMLElement($result->ConsultaEticketResult);
+  }
+  catch (Exception $e) {
+    watchdog('commerce_payment_visanet_peru', 'Payment notification: Converting xml to array failed. One possible reason is that server is down now. The convert failed with exception !exception, trying to convert response @response.', array('!exception' => $e, '@response' => $result->ConsultaEticketResult), WATCHDOG_ERROR);
+    drupal_set_message(t('Payment notification: There was a communication error during payment of your order.'), 'error');
+    watchdog('commerce_payment_visanet_peru', $error_message, array(), WATCHDOG_ERROR);
+    drupal_goto('checkout');
+  }
+
+  // Map to variables with meaninful names.
+  $field_map = array(
+    'respuesta' => 'tx_result',
+    'estado' => 'tx_result_description',
+    'cod_tienda' => 'merchant_number',
+    'nordent' => 'order_id',
+    'cod_accion' => 'deny_code',
+    'pan' => 'card_number',
+    'nombre_th' => 'card_owner',
+    'ori_tarjeta' => 'card_origin',
+    'nom_emisor' => 'bank_name', // optional
+    'eci' => 'eci', // Electronic Commerce Indicator
+    'dsc_eci' => 'eci_description',
+    'cod_autoriza' => 'authorization_code',
+    'cod_rescvv2' => 'cvv2_validation_result',
+    'imp_autorizado' => 'authorized_amount',
+    'fechayhora_tx' => 'tx_datetime',
+    'fechayhora_deposito' => 'deposit_datetime',
+    'fechayhora_devolucion' => 'return_datetime',
+    'dato_comercio' => 'merchant_data',
+  );
+  $data = array();
+  foreach ($eticket_get_response->pedido->operacion->campo as $field) {
+    // @fixme Stop assuming one operation.
+    $id = (string) $field['id'];
+    if (isset($field_map[$id])) {
+      $data[$field_map[$id]] = (string) $field;
+    }
+    else {
+      watchdog('commerce_payment_visanet_peru', 'Payment notification: There is an unrecognized field %field on the response.', array('%field' => $id), WATCHDOG_WARNING);
+    }
+  }
+
+  $error_messages = array();
+  foreach ($eticket_get_response->mensajes->mensaje as $error_message) {
+    $error_messages[] = (string) $error_message;
+  }
+  $data['error_messages'] = $error_messages;
+
+  return $data;
+}

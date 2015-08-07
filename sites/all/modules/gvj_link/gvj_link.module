@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GVJ Link feature.
+ */
+
+include_once 'gvj_link.features.inc';

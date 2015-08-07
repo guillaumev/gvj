@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GVJ News feature.
+ */
+
+include_once 'gvj_news.features.inc';

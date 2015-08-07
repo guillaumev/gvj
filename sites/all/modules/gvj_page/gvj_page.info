@@ -1,0 +1,11 @@
+name = GVJ Page
+description = Provides a content type suitable for static content, such as an About Us page
+core = 7.x
+package = GVJ
+author = Guillaume Viguier-Just
+author_url = http://www.viguierjust.com
+dependencies[] = base_page
+dependencies[] = features
+dependencies[] = pathauto
+dependencies[] = strongarm
+features[variable][] = pathauto_node_page_pattern

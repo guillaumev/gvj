@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GVJ Contact feature.
+ */
+
+include_once 'gvj_contact.features.inc';

@@ -1,0 +1,8 @@
+name = GVJ WYSIWYG
+description = Enable WYSIWYG editor
+core = 7.x
+package = GVJ
+dependencies[] = base_media
+dependencies[] = base_wysiwyg
+dependencies[] = features
+features[features_api][] = api:1
