@@ -21,7 +21,7 @@ function gvj_social_block_info() {
  */
 function gvj_social_block_view($delta = '') {
   global $base_url;
-  $blocks = array();
+  $block = array();
   switch($delta) {
     case 'gvj_social_share':
       $block['content'] = '<ul class="share-buttons">
@@ -33,5 +33,5 @@ function gvj_social_block_view($delta = '') {
 </ul>';
     break;
   }
-  return $blocks;
+  return $block;
 }
