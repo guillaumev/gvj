@@ -24,7 +24,7 @@ function gvj_social_block_view($delta = '') {
   $blocks = array();
   switch($delta) {
     case 'gvj_social_share':
-      $block['content'] = '<ul class="share-buttons">
+      $block['content'] = '<ul class="share-buttons">
   <li><a href="https://www.facebook.com/sharer/sharer.php?u='.urlencode($base_url).'&t=" title="Share on Facebook" target="_blank" onclick="window.open(\'https://www.facebook.com/sharer/sharer.php?u=\' + encodeURIComponent(document.URL) + \'&t=\' + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Facebook.svg"></a></li>
   <li><a href="https://twitter.com/intent/tweet?source=http%3A%2F%2Fwww.viguierjust.com&text=:%20'.urlencode($base_url).'" target="_blank" title="Tweet" onclick="window.open(\'https://twitter.com/intent/tweet?text=\' + encodeURIComponent(document.title) + \':%20\'  + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Twitter.svg"></a></li>
   <li><a href="https://plus.google.com/share?url='.urlencode($base_url).'" target="_blank" title="Share on Google+" onclick="window.open(\'https://plus.google.com/share?url=\' + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Google+.svg"></a></li>
