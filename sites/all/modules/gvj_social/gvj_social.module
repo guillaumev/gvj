@@ -5,3 +5,33 @@
  */
 
 include_once 'gvj_social.features.inc';
+
+/**
+ * Implements hook_block_info()
+ */
+function gvj_social_block_info() {
+  $blocks['gvj_social_share'] = array(
+    'info' => t('Share links'),
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view()
+ */
+function gvj_social_block_view($delta = '') {
+  global $base_url;
+  $blocks = array();
+  switch($delta) {
+    case 'gvj_social_share':
+      $block['content'] = '<ul class="share-buttons">
+  <li><a href="https://www.facebook.com/sharer/sharer.php?u='.urlencode($base_url).'&t=" title="Share on Facebook" target="_blank" onclick="window.open(\'https://www.facebook.com/sharer/sharer.php?u=\' + encodeURIComponent(document.URL) + \'&t=\' + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Facebook.svg"></a></li>
+  <li><a href="https://twitter.com/intent/tweet?source=http%3A%2F%2Fwww.viguierjust.com&text=:%20'.urlencode($base_url).'" target="_blank" title="Tweet" onclick="window.open(\'https://twitter.com/intent/tweet?text=\' + encodeURIComponent(document.title) + \':%20\'  + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Twitter.svg"></a></li>
+  <li><a href="https://plus.google.com/share?url='.urlencode($base_url).'" target="_blank" title="Share on Google+" onclick="window.open(\'https://plus.google.com/share?url=\' + encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Google+.svg"></a></li>
+  <li><a href="http://www.linkedin.com/shareArticle?mini=true&url='.urlencode($base_url).'&title=&summary=&source=http%3A%2F%2Fwww.viguierjust.com" target="_blank" title="Share on LinkedIn" onclick="window.open(\'http://www.linkedin.com/shareArticle?mini=true&url=\' + encodeURIComponent(document.URL) + \'&title=\' +  encodeURIComponent(document.title)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/LinkedIn.svg"></a></li>
+  <li><a href="mailto:?subject=&body=:%20'.urlencode($base_url).'" target="_blank" title="Email" onclick="window.open(\'mailto:?subject=\' + encodeURIComponent(document.title) + \'&body=\' +  encodeURIComponent(document.URL)); return false;"><img src="/sites/all/assets/images/social_flat_rounded_rects_svg/Email.svg"></a></li>
+</ul>';
+    break;
+  }
+  return $blocks;
+}

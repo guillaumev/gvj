@@ -7,7 +7,6 @@ dependencies[] = base_core
 dependencies[] = ctools
 dependencies[] = features
 dependencies[] = follow
-dependencies[] = sharethis
 dependencies[] = strongarm
 features[ctools][] = strongarm:strongarm:1
 features[features_api][] = api:2
