@@ -9,6 +9,5 @@ dependencies[] = l10n_update
 dependencies[] = openid
 dependencies[] = shortcut
 dependencies[] = strongarm
-dependencies[] = tinynav
 dependencies[] = toolbar
 features[variable][] = admin_theme
