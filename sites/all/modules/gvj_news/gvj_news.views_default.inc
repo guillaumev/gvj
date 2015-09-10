@@ -91,6 +91,27 @@ function gvj_news_views_default_views() {
   $handler->display->display_options['pager']['type'] = 'some';
   $handler->display->display_options['pager']['options']['items_per_page'] = '5';
   $handler->display->display_options['block_description'] = 'Latest News';
+  $translatables['news'] = array(
+    t('Master'),
+    t('News'),
+    t('more'),
+    t('Apply'),
+    t('Reset'),
+    t('Sort by'),
+    t('Asc'),
+    t('Desc'),
+    t('Items per page'),
+    t('- All -'),
+    t('Offset'),
+    t('« first'),
+    t('‹ previous'),
+    t('next ›'),
+    t('last »'),
+    t('Page'),
+    t('Feed'),
+    t('Block'),
+    t('Latest News'),
+  );
   $export['news'] = $view;
 
   return $export;
