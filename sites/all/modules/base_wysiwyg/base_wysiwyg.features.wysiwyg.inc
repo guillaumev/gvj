@@ -68,6 +68,7 @@ function base_wysiwyg_wysiwyg_default_profiles() {
       'default' => 1,
       'user_choose' => 0,
       'show_toggle' => 1,
+      'add_to_summaries' => 1,
       'theme' => 'advanced',
       'language' => 'en',
       'buttons' => array(
@@ -91,6 +92,7 @@ function base_wysiwyg_wysiwyg_default_profiles() {
           'Link' => 1,
           'Unlink' => 1,
           'Anchor' => 1,
+          'Image' => 1,
           'Superscript' => 1,
           'Subscript' => 1,
           'Blockquote' => 1,
@@ -102,16 +104,11 @@ function base_wysiwyg_wysiwyg_default_profiles() {
           'PasteText' => 1,
           'PasteFromWord' => 1,
           'RemoveFormat' => 1,
-          'Font' => 1,
-          'FontSize' => 1,
-          'Styles' => 1,
+          'Format' => 1,
           'Table' => 1,
-          'Flash' => 1,
-          'Smiley' => 1,
-          'Iframe' => 1,
         ),
-        'drupal' => array(
-          'media' => 1,
+        'imce' => array(
+          'imce' => 1,
         ),
       ),
       'toolbarLocation' => 'top',
@@ -124,8 +121,8 @@ function base_wysiwyg_wysiwyg_default_profiles() {
       'css_path' => '',
       'stylesSet' => '',
       'block_formats' => 'p,address,pre,h2,h3,h4,h5,h6,div',
-      'advanced__active_tab' => 'edit-css',
-      'forcePasteAsPlainText' => 0,
+      'advanced__active_tab' => 'edit-basic',
+      'forcePasteAsPlainText' => 1,
     ),
   );
 
