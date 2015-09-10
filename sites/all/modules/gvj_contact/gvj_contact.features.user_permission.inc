@@ -10,7 +10,7 @@
 function gvj_contact_user_default_permissions() {
   $permissions = array();
 
-  // Exported permission: access site-wide contact form.
+  // Exported permission: 'access site-wide contact form'.
   $permissions['access site-wide contact form'] = array(
     'name' => 'access site-wide contact form',
     'roles' => array(
@@ -20,7 +20,7 @@ function gvj_contact_user_default_permissions() {
     'module' => 'contact',
   );
 
-  // Exported permission: access user contact forms.
+  // Exported permission: 'access user contact forms'.
   $permissions['access user contact forms'] = array(
     'name' => 'access user contact forms',
     'roles' => array(
@@ -29,7 +29,7 @@ function gvj_contact_user_default_permissions() {
     'module' => 'contact',
   );
 
-  // Exported permission: administer contact forms.
+  // Exported permission: 'administer contact forms'.
   $permissions['administer contact forms'] = array(
     'name' => 'administer contact forms',
     'roles' => array(

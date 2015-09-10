@@ -2,7 +2,6 @@ name = GVJ Contact
 description = Contact form for your users and for your site
 core = 7.x
 package = GVJ
-php = 5.2.4
 dependencies[] = base_core
 dependencies[] = contact
 dependencies[] = ctools
