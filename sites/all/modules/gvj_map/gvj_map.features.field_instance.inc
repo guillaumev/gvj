@@ -23,14 +23,18 @@ function gvj_map_field_default_field_instances() {
         'settings' => array(
           'height' => 200,
           'icon' => array(
+            'html' => '',
+            'htmlClass' => 'leaflet_map_icon',
             'iconAnchor' => array(
               'x' => '',
               'y' => '',
             ),
+            'iconImageStyle' => '',
             'iconSize' => array(
               'x' => '',
               'y' => '',
             ),
+            'iconType' => 'marker',
             'iconUrl' => '',
             'popupAnchor' => array(
               'x' => '',
@@ -43,7 +47,27 @@ function gvj_map_field_default_field_instances() {
             'shadowUrl' => '',
           ),
           'leaflet_map' => 'OSM Mapnik',
-          'popup' => 0,
+          'popup' => array(
+            'show' => 0,
+            'text' => '',
+          ),
+          'vector_display' => array(
+            'clickable' => 0,
+            'color' => '',
+            'dashArray' => '',
+            'fill' => 0,
+            'fillColor' => '',
+            'fillOpacity' => '',
+            'opacity' => '',
+            'stroke' => 0,
+            'stroke_override' => 0,
+            'weight' => '',
+          ),
+          'zoom' => array(
+            'initialZoom' => 10,
+            'maxZoom' => -1,
+            'minZoom' => 1,
+          ),
         ),
         'type' => 'geofield_leaflet',
         'weight' => 0,
