@@ -56,6 +56,7 @@ function media_wysiwyg_parse_css_declarations($declarations) {
  * @see hook_media_wysiwyg_token_to_markup_alter()
  */
 function media_wysiwyg_token_to_markup($match, $wysiwyg = FALSE) {
+  static $recursion_stop;
   $settings = array();
   $match = str_replace("[[", "", $match);
   $match = str_replace("]]", "", $match);
@@ -107,6 +108,13 @@ function media_wysiwyg_token_to_markup($match, $wysiwyg = FALSE) {
     if (!$file) {
       throw new Exception('Could not load media object');
     }
+    // Check if we've got a recursion. Happens because a file_load() may
+    // triggers file_entity_is_page() which then again triggers a file load.
+    if (isset($recursion_stop[$file->fid])) {
+      return '';
+    }
+    $recursion_stop[$file->fid] = TRUE;
+
     $tag_info['file'] = $file;
 
     // The class attributes is a string, but drupal requires it to be
@@ -212,7 +220,9 @@ function media_wysiwyg_token_to_markup($match, $wysiwyg = FALSE) {
     }
   }
   drupal_alter('media_wysiwyg_token_to_markup', $element, $tag_info, $settings);
-  return drupal_render($element);
+  $output = drupal_render($element);
+  unset($recursion_stop[$file->fid]);
+  return $output;
 }
 
 /**
