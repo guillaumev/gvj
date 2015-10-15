@@ -1,0 +1,42 @@
+diff --git a/sitedir_migrate_blocks/sitedir_migrate_blocks.module b/sitedir_migrate_blocks/sitedir_migrate_blocks.module
+index c26df91..16e1744 100644
+--- a/sitedir_migrate_blocks/sitedir_migrate_blocks.module
++++ b/sitedir_migrate_blocks/sitedir_migrate_blocks.module
+@@ -4,10 +4,10 @@ function sitedir_migrate_blocks_sitedir_query() {
+   return 'Blocks';
+ }
+ 
+-function sitedir_migrate_blocks_sitedir_update() {
++function sitedir_migrate_blocks_sitedir_update($from, $to) {
+   watchdog('Sitedir Migrate', 'Running the Block migration');
+-  $args = func_get_args();
+-  $from = $args[0];
+-  $to = $args[1];
+-  db_query("UPDATE {block_custom} SET body = replace(body,'%s','%s')", $from, $to);
++  db_query("UPDATE {block_custom} SET body = REPLACE(body, :old, :new)", array(':old' => $from, ':new' => $to));
++  if (db_table_exists('locales_target') && db_table_exists('i18n_string')) {
++    db_query("UPDATE {locales_target} SET translation = REPLACE(translation, :old, :new) WHERE lid IN (SELECT lid FROM {i18n_string} WHERE textgroup = :text)", array(':old' => $from, ':new' => $to, ':text' => 'blocks'));
++  }
+ }
+diff --git a/sitedir_migrate_body/sitedir_migrate_body.module b/sitedir_migrate_body/sitedir_migrate_body.module
+index eb3a2de..2fb9e6c 100644
+--- a/sitedir_migrate_body/sitedir_migrate_body.module
++++ b/sitedir_migrate_body/sitedir_migrate_body.module
+@@ -4,11 +4,11 @@ function sitedir_migrate_body_sitedir_query() {
+   return 'Node Bodies';
+ }
+ 
+-function sitedir_migrate_body_sitedir_update() {
++function sitedir_migrate_body_sitedir_update($from, $to) {
+   watchdog('Sitedir Migrate', 'Running the Node Body migration');
+-  $args = func_get_args();
+-  $from = $args[0];
+-  $to = $args[1];
+-  db_query("UPDATE {field_data_body} SET body_value = replace(body_value,'%s','%s')", $from, $to);
+-  db_query("UPDATE {field_revision_body} SET body_value = replace(body_value,'%s','%s')", $from, $to);
++  db_query("UPDATE {field_data_body} SET body_value = REPLACE(body_value,:old,:new)", array(':old' => $from, ':new' => $to));
++  db_query("UPDATE {field_data_body} SET body_summary = REPLACE(body_summary,:old,:new)", array(':old' => $from, ':new' => $to));
++
++  db_query("UPDATE {field_revision_body} SET body_value = REPLACE(body_value,:old,:new)", array(':old' => $from, ':new' => $to));
++  db_query("UPDATE {field_revision_body} SET body_summary = REPLACE(body_summary,:old,:new)", array(':old' => $from, ':new' => $to));
+ }
