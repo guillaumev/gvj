@@ -588,10 +588,7 @@ function field_collection_item_is_empty(FieldCollectionItemEntity $item) {
   $is_empty = TRUE;
 
   // Check whether all fields are booleans.
-  $all_boolean = $instances && !(bool) array_filter($instances, function ($instance) {
-    $field = field_info_field($instance['field_name']);
-    return $field['type'] != 'list_boolean';
-  });
+  $all_boolean = $instances && !(bool) array_filter('_field_collection_field_is_not_boolean');
 
   foreach ($instances as $instance) {
     $field_name = $instance['field_name'];
@@ -622,6 +619,14 @@ function field_collection_item_is_empty(FieldCollectionItemEntity $item) {
   // Allow other modules a chance to alter the value before returning.
   drupal_alter('field_collection_is_empty', $is_empty, $item);
   return $is_empty;
+}
+
+/**
+ * Callback used by array_filter in field_collection_is_empty.
+ */
+function _field_collection_field_is_not_boolean($instance) {
+  $field = field_info_field($instance['field_name']);
+  return $field['type'] != 'list_boolean';
 }
 
 /**
@@ -1225,19 +1230,7 @@ function field_collection_field_widget_embed_validate($element, &$form_state, $c
   $language = $element['#language'];
 
   $field_state = field_form_get_state($field_parents, $field_name, $language, $form_state);
-
-  //We have to populate the field_collection_item before we can attach it to the form.
-  if (isset($field_state['entity'][$element['#delta']])) {
   $field_collection_item = $field_state['entity'][$element['#delta']];
-  }
-  elseif ($form_state['input'][$field_state['array_parents'][0]][$field_state['array_parents'][1]][$element['#delta']]) {
-    $field_collection_item = clone $field_state['entity'][0];
-    foreach ($form_state['input'][$field_state['array_parents'][0]][$field_state['array_parents'][1]][$element['#delta']] as $key => $value) {
-      if (property_exists($field_collection_item, $key)) {
-       $field_collection_item->{$key} = $value;
-      }
-    }
-  }
 
   // Attach field API validation of the embedded form.
   field_attach_form_validate('field_collection_item', $field_collection_item, $element, $form_state);
