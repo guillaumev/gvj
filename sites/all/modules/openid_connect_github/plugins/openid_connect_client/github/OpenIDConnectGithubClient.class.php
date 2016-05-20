@@ -105,12 +105,12 @@ class OpenIDConnectGithubClient extends OpenIDConnectClientBase {
         }
       }
 
-      return $claims ?: FALSE;
+      return $claims;
     }
     else {
       openid_connect_log_request_error(__FUNCTION__, $this->name, $response);
 
-      return FALSE;
+      return array();
     }
   }
 
