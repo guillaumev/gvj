@@ -39,4 +39,6 @@
  * signs to enable.
  */
 $sites = array (
+  'www.gvj-web.com' => 'www.viguierjust.com',
+  'gvj-web.com' => 'www.viguierjust.com',
 );
