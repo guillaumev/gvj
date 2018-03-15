@@ -13,7 +13,7 @@
  * Variables available:
  * - $message:  Contains the text that will be display whithin the pop-up
  * - $agree_button: Contains agree button title
- * - $disagree_button: Contains disagree button title
+ * - $disagree_button: Contains Cookie policy button title
  */
 ?>
 <div>
@@ -23,7 +23,9 @@
     </div>
     <div id="popup-buttons">
       <button type="button" class="agree-button"><?php print $agree_button; ?></button>
-      <button type="button" class="find-more-button"><?php print $disagree_button; ?></button>
+      <?php if ($disagree_button) : ?>
+        <button type="button" class="find-more-button"><?php print $disagree_button; ?></button>
+      <?php endif; ?>
     </div>
   </div>
 </div>
