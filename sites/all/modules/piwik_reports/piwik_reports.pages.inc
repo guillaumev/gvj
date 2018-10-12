@@ -6,10 +6,35 @@
  */
 
 /**
- * Return the form where to select the report period.
+ * Return the $form that handles piwik reports.
+ *
+ * @param array $form
+ *   See form API.
+ * @param array $form_state
+ *   See form API.
+ * @param string $report
+ *   The report name.
+ *
+ * @return array
+ *   See form API.
  */
-function piwik_reports_dateselect_form() {
+function piwik_reports_reports($form, &$form_state, $report) {
+  global $user;
 
+  $piwik_auth = (check_plain(variable_get('piwik_reports_token_auth', '') ? variable_get('piwik_reports_token_auth', '') : $user->data['piwik_reports_token_auth']));
+  $piwik_url = piwik_reports_get_url();
+  $sites = piwik_reports_get_sites($piwik_auth);
+  if (empty($sites)) {
+    $_SESSION['piwik_reports_site'] == '';
+    drupal_set_message(t('You cannot access any data on the selected Piwik server. Please check authentication string and permissions with your Piwik server administrator.'), 'warning');
+    return;
+  }
+  $form['#attributes'] = array(
+    'class' => array(
+      'search-form',
+      'container-inline',
+    ),
+  );
   $period = array(
     0 => t('Today'),
     1 => t('Yesterday'),
@@ -17,34 +42,16 @@ function piwik_reports_dateselect_form() {
     3 => t('Last month'),
     4 => t('Last year'),
   );
-
-  $form['#attributes'] = array('class' => array('search-form'));
-  $form['basic'] = array(
+  $form['piwik_filters'] = array(
     '#type' => 'fieldset',
     '#title' => t('Select site and time period'),
   );
-  $form['basic']['inline'] = array(
-    '#prefix' => '<div class="container-inline">',
-    '#suffix' => '</div>',
-  );
-  $form['basic']['inline']['period'] = array(
+  $form['piwik_filters']['period'] = array(
     '#type' => 'select',
     '#title' => '',
     '#default_value' => isset($_SESSION['piwik_reports_period']) ? $_SESSION['piwik_reports_period'] : 0,
     '#options' => $period,
   );
-  $form['basic']['inline']['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Filter'),
-    '#weight' => 15,
-  );
-  return $form;
-}
-
-/**
- * Return the form where to select the site.
- */
-function piwik_reports_siteselect_form($form = array(), $sites = array()) {
   $options = array();
   $allowed_keys = explode(',', variable_get('piwik_reports_allowed_sites', ''));
   $session_site_exists = FALSE;
@@ -61,7 +68,7 @@ function piwik_reports_siteselect_form($form = array(), $sites = array()) {
     $_SESSION['piwik_reports_site'] = $allowed_keys[0];
   }
   if (count($options) > 1) {
-    $form['basic']['inline']['site'] = array(
+    $form['piwik_filters']['site'] = array(
       '#type' => 'select',
       '#title' => t('Site:'),
       '#weight' => -5,
@@ -73,11 +80,11 @@ function piwik_reports_siteselect_form($form = array(), $sites = array()) {
     foreach ($options as $siteid => $sitename) {
       break;
     }
-    $form['basic']['inline']['site'] = array(
+    $form['piwik_filters']['site'] = array(
       '#type' => 'hidden',
       '#value' => $siteid,
     );
-    $form['basic']['inline']['sitename'] = array(
+    $form['piwik_filters']['sitename'] = array(
       '#type' => 'textfield',
       '#title' => t('Site:'),
       '#weight' => -5,
@@ -85,36 +92,14 @@ function piwik_reports_siteselect_form($form = array(), $sites = array()) {
       '#value' => $sitename,
       '#disabled' => TRUE,
     );
+    $form['piwik_filters']['period']['#attributes'] = ['onchange' => 'this.form.submit();'];
   }
-  return $form;
-}
+  $form['piwik_filters']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+    '#weight' => 15,
+  );
 
-/**
- * Return the $form that handles piwik reports.
- *
- * @param array $form
- *   See form API.
- * @param array $form_state
- *   See form API.
- * @param string $report
- *   The report name.
- *
- * @return array
- *   See form API.
- */
-function piwik_reports_reports($form, &$form_state, $report) {
-  global $user;
-
-  $piwik_auth = (variable_get('piwik_reports_token_auth', '') ? variable_get('piwik_reports_token_auth', '') : $user->data['piwik_reports_token_auth']);
-  $piwik_url = piwik_reports_get_url();
-  $sites = piwik_reports_get_sites($piwik_auth);
-  if (empty($sites)) {
-    $_SESSION['piwik_reports_site'] == '';
-    drupal_set_message(t('You cannot access any data on the selected Piwik server. Please check authentication string and permissions with your Piwik server administrator.'), 'warning');
-    return;
-  }
-  $form = piwik_reports_dateselect_form();
-  $form = piwik_reports_siteselect_form($form, $sites);
   $piwik_site_id = $_SESSION['piwik_reports_site'];
   $period = isset($_SESSION['piwik_reports_period']) ? $_SESSION['piwik_reports_period'] : 0;
 
@@ -139,17 +124,18 @@ function piwik_reports_reports($form, &$form_state, $report) {
   $data_params[0]['action'] = 'iframe';
   $data_params[0]['disableLink'] = 1;
   $data_params[0]['widget'] = 1;
-  // $data_params[0]['loading'] = t('Loading data...');.
+
   if (!empty($piwik_auth)) {
     $data_params[0]['token_auth'] = $piwik_auth;
   }
 
   switch ($report) {
     case 'visitors_overview':
+      $iframe_height[0] = 950;
       $title[0] = t('Visits trend');
       $data_params[0]['columns[]'] = 'nb_visits';
       $data_params[0]['moduleToWidgetize'] = 'VisitsSummary';
-      $data_params[0]['actionToWidgetize'] = 'getEvolutionGraph';
+      $data_params[0]['actionToWidgetize'] = 'index';
       break;
 
     case 'visitors_times':
@@ -166,19 +152,19 @@ function piwik_reports_reports($form, &$form_state, $report) {
       $data_params[3] = $data_params[0];
       // Browser families.
       $title[0] = t('Browser families');
-      $data_params[0]['moduleToWidgetize'] = 'UserSettings';
-      $data_params[0]['actionToWidgetize'] = 'getBrowserType';
+      $data_params[0]['moduleToWidgetize'] = 'DevicesDetection';
+      $data_params[0]['actionToWidgetize'] = 'getBrowserEngines';
       // Screen resolutions.
       $title[1] = t('Screen resolution');
-      $data_params[1]['moduleToWidgetize'] = 'UserSettings';
+      $data_params[1]['moduleToWidgetize'] = 'Resolution';
       $data_params[1]['actionToWidgetize'] = 'getConfiguration';
       // Operating systems.
       $title[2] = t('Operating system');
-      $data_params[2]['moduleToWidgetize'] = 'UserSettings';
-      $data_params[2]['actionToWidgetize'] = 'getOS';
+      $data_params[2]['moduleToWidgetize'] = 'DevicesDetection';
+      $data_params[2]['actionToWidgetize'] = 'getOsVersions';
       // Client configurations.
       $title[3] = t('Client configuration');
-      $data_params[3]['moduleToWidgetize'] = 'UserSettings';
+      $data_params[3]['moduleToWidgetize'] = 'Resolution';
       $data_params[3]['actionToWidgetize'] = 'getResolution';
       break;
 
@@ -222,6 +208,30 @@ function piwik_reports_reports($form, &$form_state, $report) {
       $data_params[0]['filter_limit'] = 15;
       break;
 
+    case 'actions_sitesearch':
+      $data_params[1] = $data_params[0];
+      $data_params[2] = $data_params[0];
+      $data_params[3] = $data_params[0];
+
+      $title[0] = t('Site Search Keywords');
+      $iframe_height[0] = 750;
+      $data_params[0]['moduleToWidgetize'] = 'Actions';
+      $data_params[0]['actionToWidgetize'] = 'getSiteSearchKeywords';
+      $data_params[0]['filter_limit'] = 15;
+      // Pages following search.
+      $title[1] = t('Pages Following a Site Search');
+      $data_params[1]['moduleToWidgetize'] = 'Actions';
+      $data_params[1]['actionToWidgetize'] = 'getPageUrlsFollowingSiteSearch';
+      // No results.
+      $title[2] = t('Site Search No Result Keyword');
+      $data_params[2]['moduleToWidgetize'] = 'Actions';
+      $data_params[2]['actionToWidgetize'] = 'getSiteSearchNoResultKeywords';
+      // Categories.
+      $title[3] = t('Site Search Categories');
+      $data_params[3]['moduleToWidgetize'] = 'Actions';
+      $data_params[3]['actionToWidgetize'] = 'getSiteSearchCategories';
+      break;
+
     case 'actions_outlinks':
       $title[0] = '';
       $iframe_height[0] = 750;
@@ -238,10 +248,16 @@ function piwik_reports_reports($form, &$form_state, $report) {
       $data_params[0]['filter_limit'] = 15;
       break;
 
-    case 'referrers_evolution':
+    case 'referrers_overview':
+      $data_params[1] = $data_params[0];
+      // Types.
       $title[0] = '';
       $data_params[0]['moduleToWidgetize'] = 'Referrers';
       $data_params[0]['actionToWidgetize'] = 'getReferrerType';
+      // Referrers.
+      $title[1] = t('Referrers');
+      $data_params[1]['moduleToWidgetize'] = 'Referrers';
+      $data_params[1]['actionToWidgetize'] = 'getAll';
       break;
 
     case 'referrers_search':
@@ -257,13 +273,18 @@ function piwik_reports_reports($form, &$form_state, $report) {
       break;
 
     case 'referrers_websites':
+      $data_params[1] = $data_params[0];
       $title[0] = '';
       $iframe_height[0] = 1020;
       $data_params[0]['moduleToWidgetize'] = 'Referrers';
       $data_params[0]['actionToWidgetize'] = 'getWebsites';
+
+      $title[1] = t('Social Networks');
+      $data_params[1]['moduleToWidgetize'] = 'Referrers';
+      $data_params[1]['actionToWidgetize'] = 'getSocials';
       break;
 
-    case 'goals_evolution':
+    case 'goals':
       $goals = piwik_reports_get_goals($piwik_auth, $_SESSION['piwik_reports_site']);
       if (count($goals) == 0) {
         $empty_text = t('No goals have been set. Check with your Piwik server administrator if you desire some.');
