@@ -1,9 +1,0 @@
-name = Base Apps
-description = Provides base configuration for Apps.
-core = 7.x
-package = Base
-dependencies[] = apps
-dependencies[] = base_core
-dependencies[] = features
-features[features_api][] = api:1
-features[user_permission][] = administer apps
