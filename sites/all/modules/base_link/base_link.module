@@ -1,7 +1,0 @@
-<?php
-/**
- * @file
- * Code for the Base Link feature.
- */
-
-include_once 'base_link.features.inc';
